@@ -9,7 +9,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-        title: "Playlistz", theme: ThemeData.dark(), home: Generator());
+        title: "Playlistz",
+        theme: ThemeData.dark(),
+        home: Generator(),
+        routes: {'/saved': (context) => SavedList()});
   }
 }
 
@@ -21,6 +24,11 @@ class Generator extends StatefulWidget {
 class GeneratorState extends State<Generator> {
   String _playlistName = 'Fire Playlist';
   final saved = Set<String>();
+  var plNameStyle;
+  final plNameUnsaved = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
+  final plNameSaved = TextStyle(
+      fontSize: 50, fontWeight: FontWeight.bold, color: Colors.lightGreen);
+  var isSaved = false;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +36,11 @@ class GeneratorState extends State<Generator> {
         appBar: AppBar(
           title: Text("Playlistz"),
           actions: <Widget>[
-            IconButton(icon: Icon(Icons.list, size: 30), onPressed: _showSaved)
+            IconButton(
+                icon: Icon(Icons.list, size: 30),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/saved', arguments: saved);
+                })
           ],
         ),
         body: Center(
@@ -40,11 +52,8 @@ class GeneratorState extends State<Generator> {
                 height: 300,
                 //color: Colors.orange,
                 child: Center(
-                  child: Text('$_playlistName',
-                      textAlign: TextAlign.center,
-                      style:
-                          TextStyle(fontSize: 50, fontWeight: FontWeight.bold)),
-                ),
+                    child: Text('$_playlistName',
+                        textAlign: TextAlign.center, style: plNameStyle)),
               ),
               MaterialButton(
                 onPressed: _newPlaylistName,
@@ -67,7 +76,7 @@ class GeneratorState extends State<Generator> {
         floatingActionButton: FloatingActionButton(
           onPressed: _savePlaylistName,
           child: Icon(Icons.whatshot, size: 30),
-          backgroundColor: Colors.orange,
+          backgroundColor: Colors.red,
           foregroundColor: Colors.white,
         ));
   }
@@ -79,48 +88,57 @@ class GeneratorState extends State<Generator> {
       String noun =
           WordNoun.random(maxSyllables: 4, safeOnly: false).asCapitalized;
       _playlistName = '$adjective' + ' ' + '$noun';
+      plNameStyle = plNameUnsaved;
+      isSaved = false;
     });
   }
 
   void _savePlaylistName() {
     setState(() {
-      saved.add(_playlistName);
+      if (isSaved) {
+        isSaved = false;
+        plNameStyle = plNameUnsaved;
+        saved.remove(_playlistName);
+      } else {
+        isSaved = true;
+        plNameStyle = plNameSaved;
+        saved.add(_playlistName);
+      }
     });
   }
+}
 
-  void _showSaved() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) {
-          final savedList = saved.toList();
-          return Scaffold(
-            appBar: AppBar(
-              title: Text('Fire Playlistz'),
-            ),
-            body: ListView.builder(
-                itemCount: savedList.length,
-                itemBuilder: (context, index) {
-                  final item = savedList[index];
-                  return Dismissible(
-                    key: Key(item),
-                    onDismissed: (direction) {
-                      setState(() {
-                        savedList.removeAt(index);
-                        saved.remove('$item');
-                      });
-                    },
-                    background: Container(color: Colors.red),
-                    child: Column(
-                      children: <Widget>[
-                        ListTile(title: Text('$item', style: TextStyle(fontSize: 20))),
-                        Divider()
-                      ]
-                    )
-                  );
-                }),
-          );
-        },
+class SavedList extends StatefulWidget {
+  @override
+  SavedListState createState() => SavedListState();
+}
+
+class SavedListState extends State<SavedList> {
+  @override
+  Widget build(BuildContext context) {
+    final savedList = saved.toList();
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Fire Playlistz'),
       ),
+      body: ListView.builder(
+          itemCount: savedList.length,
+          itemBuilder: (context, index) {
+            final item = savedList[index];
+            return Dismissible(
+                key: Key(item),
+                onDismissed: (direction) {
+                  setState(() {
+                    saved.remove('$item');
+                  });
+                },
+                background: Container(color: Colors.red),
+                child: Column(children: <Widget>[
+                  ListTile(
+                      title: Text('$item', style: TextStyle(fontSize: 20))),
+                  Divider()
+                ]));
+          }),
     );
   }
 }
