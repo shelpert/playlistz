@@ -11,8 +11,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
         title: "Playlistz",
         theme: ThemeData.dark(),
-        home: Generator(),
-        routes: {'/saved': (context) => SavedList()});
+        home: Generator());
   }
 }
 
@@ -24,7 +23,7 @@ class Generator extends StatefulWidget {
 class GeneratorState extends State<Generator> {
   String _playlistName = 'Fire Playlist';
   final saved = Set<String>();
-  var plNameStyle;
+  var plNameStyle = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
   final plNameUnsaved = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
   final plNameSaved = TextStyle(
       fontSize: 50, fontWeight: FontWeight.bold, color: Colors.lightGreen);
@@ -39,7 +38,7 @@ class GeneratorState extends State<Generator> {
             IconButton(
                 icon: Icon(Icons.list, size: 30),
                 onPressed: () {
-                  Navigator.pushNamed(context, '/saved', arguments: saved);
+                  Navigator.of(context).push(MaterialPageRoute(builder:(context)=>SavedList(saved)));
                 })
           ],
         ),
@@ -109,11 +108,17 @@ class GeneratorState extends State<Generator> {
 }
 
 class SavedList extends StatefulWidget {
+  final saved;
+  SavedList(this.saved);
+
   @override
-  SavedListState createState() => SavedListState();
+  SavedListState createState() => SavedListState(this.saved);
 }
 
 class SavedListState extends State<SavedList> {
+  Set<String> saved;
+  SavedListState(this.saved);
+
   @override
   Widget build(BuildContext context) {
     final savedList = saved.toList();
