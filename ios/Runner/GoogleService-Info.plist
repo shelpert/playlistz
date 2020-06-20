@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CLIENT_ID</key>
+	<string>1013610094148-3qmid13c0f3adtcccvk4dv1letok2k9c.apps.googleusercontent.com</string>
+	<key>REVERSED_CLIENT_ID</key>
+	<string>com.googleusercontent.apps.1013610094148-3qmid13c0f3adtcccvk4dv1letok2k9c</string>
+	<key>API_KEY</key>
+	<string>AIzaSyDC59n6DLO7q4nbRQ7jy5UIXw4MMErW3do</string>
+	<key>GCM_SENDER_ID</key>
+	<string>1013610094148</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.example.playlistz</string>
+	<key>PROJECT_ID</key>
+	<string>playlistz-db</string>
+	<key>STORAGE_BUCKET</key>
+	<string>playlistz-db.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:1013610094148:ios:b6cd1baf3d3aef554c6611</string>
+	<key>DATABASE_URL</key>
+	<string>https://playlistz-db.firebaseio.com</string>
+</dict>
+</plist>

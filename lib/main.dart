@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:random_words/random_words.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:device_id/device_id.dart';
 
 void main() {
   runApp(MyApp());
@@ -9,9 +11,22 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-        title: "Playlistz",
-        theme: ThemeData.dark(),
-        home: Generator());
+        title: "Playlistz", theme: ThemeData.dark(), home: Generator());
+  }
+}
+
+class PlaylistName {
+  String name;
+  TextStyle style;
+  final unsaved = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
+  final saved = TextStyle(
+      fontSize: 50, fontWeight: FontWeight.bold, color: Colors.lightGreen);
+  bool isSaved;
+
+  PlaylistName() {
+    name = 'Fire Playlist';
+    style = unsaved;
+    isSaved = false;
   }
 }
 
@@ -21,13 +36,8 @@ class Generator extends StatefulWidget {
 }
 
 class GeneratorState extends State<Generator> {
-  String _playlistName = 'Fire Playlist';
+  PlaylistName plName = PlaylistName();
   final saved = Set<String>();
-  var plNameStyle = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
-  final plNameUnsaved = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
-  final plNameSaved = TextStyle(
-      fontSize: 50, fontWeight: FontWeight.bold, color: Colors.lightGreen);
-  var isSaved = false;
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +48,7 @@ class GeneratorState extends State<Generator> {
             IconButton(
                 icon: Icon(Icons.list, size: 30),
                 onPressed: () {
-                  Navigator.of(context).push(MaterialPageRoute(builder:(context)=>SavedList(saved)));
+                  _awaitSavedList(context);
                 })
           ],
         ),
@@ -51,8 +61,8 @@ class GeneratorState extends State<Generator> {
                 height: 300,
                 //color: Colors.orange,
                 child: Center(
-                    child: Text('$_playlistName',
-                        textAlign: TextAlign.center, style: plNameStyle)),
+                    child: Text(plName.name,
+                        textAlign: TextAlign.center, style: plName.style)),
               ),
               MaterialButton(
                 onPressed: _newPlaylistName,
@@ -86,38 +96,54 @@ class GeneratorState extends State<Generator> {
           WordAdjective.random(maxSyllables: 4, safeOnly: false).asCapitalized;
       String noun =
           WordNoun.random(maxSyllables: 4, safeOnly: false).asCapitalized;
-      _playlistName = '$adjective' + ' ' + '$noun';
-      plNameStyle = plNameUnsaved;
-      isSaved = false;
+      plName.name = '$adjective' + ' ' + '$noun';
+      plName.style = plName.unsaved;
+      plName.isSaved = false;
     });
   }
 
   void _savePlaylistName() {
     setState(() {
-      if (isSaved) {
-        isSaved = false;
-        plNameStyle = plNameUnsaved;
-        saved.remove(_playlistName);
+      if (plName.isSaved) {
+        plName.isSaved = false;
+        plName.style = plName.unsaved;
+        saved.remove(plName.name);
       } else {
-        isSaved = true;
-        plNameStyle = plNameSaved;
-        saved.add(_playlistName);
+        plName.isSaved = true;
+        plName.style = plName.saved;
+        saved.add(plName.name);
       }
+    });
+  }
+
+  void _awaitSavedList(BuildContext context) async {
+    final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => SavedList(saved: saved, current: plName),
+        ));
+
+    setState(() {
+      plName = result;
     });
   }
 }
 
 class SavedList extends StatefulWidget {
   final saved;
-  SavedList(this.saved);
+  final current;
+  SavedList({this.saved, this.current});
 
   @override
-  SavedListState createState() => SavedListState(this.saved);
+  SavedListState createState() =>
+      SavedListState(saved: this.saved, current: this.current);
 }
 
 class SavedListState extends State<SavedList> {
   Set<String> saved;
-  SavedListState(this.saved);
+  PlaylistName current;
+
+  SavedListState({this.saved, this.current});
 
   @override
   Widget build(BuildContext context) {
@@ -125,6 +151,10 @@ class SavedListState extends State<SavedList> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Fire Playlistz'),
+        leading: new IconButton(
+          icon: new Icon(Icons.arrow_back),
+          onPressed: () => Navigator.of(context).pop(current),
+        ),
       ),
       body: ListView.builder(
           itemCount: savedList.length,
@@ -135,6 +165,10 @@ class SavedListState extends State<SavedList> {
                 onDismissed: (direction) {
                   setState(() {
                     saved.remove('$item');
+                    if ('$item' == current.name) {
+                    current.style = current.unsaved;
+                    current.isSaved = false;
+                    }
                   });
                 },
                 background: Container(color: Colors.red),
