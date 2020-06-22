@@ -1,7 +1,9 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:random_words/random_words.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:device_id/device_id.dart';
+import 'package:device_info/device_info.dart';
 
 void main() {
   runApp(MyApp());
@@ -37,10 +39,12 @@ class Generator extends StatefulWidget {
 
 class GeneratorState extends State<Generator> {
   PlaylistName plName = PlaylistName();
-  final saved = Set<String>();
+  String deviceId;
 
   @override
   Widget build(BuildContext context) {
+    _getId();
+    _checkUser();
     return Scaffold(
         appBar: AppBar(
           title: Text("Playlistz"),
@@ -103,15 +107,24 @@ class GeneratorState extends State<Generator> {
   }
 
   void _savePlaylistName() {
+    DocumentReference arr =
+        Firestore.instance.collection('users').document(deviceId);
+    if (plName.isSaved) {
+      arr.updateData({
+        'saved': FieldValue.arrayRemove([plName.name])
+      });
+    } else {
+      arr.updateData({
+        'saved': FieldValue.arrayUnion([plName.name])
+      });
+    }
     setState(() {
       if (plName.isSaved) {
         plName.isSaved = false;
         plName.style = plName.unsaved;
-        saved.remove(plName.name);
       } else {
         plName.isSaved = true;
         plName.style = plName.saved;
-        saved.add(plName.name);
       }
     });
   }
@@ -120,64 +133,112 @@ class GeneratorState extends State<Generator> {
     final result = await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (context) => SavedList(saved: saved, current: plName),
+          builder: (context) => SavedList(id: deviceId, current: plName),
         ));
 
     setState(() {
       plName = result;
     });
   }
+
+  void _getId() async {
+    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+    try{
+    if (Platform.isIOS) {
+        IosDeviceInfo iosDeviceInfo = await deviceInfo.iosInfo;
+        deviceId = iosDeviceInfo.identifierForVendor;
+    } else {
+      AndroidDeviceInfo androidDeviceInfo = await deviceInfo.androidInfo;
+      deviceId = androidDeviceInfo.androidId; // unique ID on Android
+    }
+    } on PlatformException {
+      print('Error');
+    }
+  }
+
+  void _checkUser() async {
+    final QuerySnapshot result = await Firestore.instance
+        .collection('users')
+        .where('id', isEqualTo: deviceId)
+        .getDocuments();
+
+    final List<DocumentSnapshot> docs = result.documents;
+
+    if (docs.length == 0) {
+      Firestore.instance
+          .collection('users')
+          .document(deviceId)
+          .setData({'saved': [], 'id': deviceId});
+      
+    }
+
+  }
 }
 
 class SavedList extends StatefulWidget {
-  final saved;
+  final id;
   final current;
-  SavedList({this.saved, this.current});
+  SavedList({this.id, this.current});
 
   @override
   SavedListState createState() =>
-      SavedListState(saved: this.saved, current: this.current);
+      SavedListState(id: this.id, current: this.current);
 }
 
 class SavedListState extends State<SavedList> {
-  Set<String> saved;
+  List<dynamic> saved;
   PlaylistName current;
+  String id;
+  DocumentReference arr;
 
-  SavedListState({this.saved, this.current});
+  SavedListState({this.id, this.current});
 
   @override
   Widget build(BuildContext context) {
-    final savedList = saved.toList();
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Fire Playlistz'),
-        leading: new IconButton(
-          icon: new Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(current),
+        appBar: AppBar(
+          title: Text('Fire Playlistz'),
+          leading: new IconButton(
+            icon: new Icon(Icons.arrow_back),
+            onPressed: () => Navigator.of(context).pop(current),
+          ),
         ),
-      ),
-      body: ListView.builder(
-          itemCount: savedList.length,
-          itemBuilder: (context, index) {
-            final item = savedList[index];
-            return Dismissible(
-                key: Key(item),
-                onDismissed: (direction) {
-                  setState(() {
-                    saved.remove('$item');
-                    if ('$item' == current.name) {
-                    current.style = current.unsaved;
-                    current.isSaved = false;
-                    }
+        body: StreamBuilder<DocumentSnapshot>(
+            stream:
+                Firestore.instance.collection('users').document(id).snapshots(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) return LinearProgressIndicator();
+              saved = snapshot.data['saved'];
+              return ListView.builder(
+                  itemCount: saved.length,
+                  itemBuilder: (context, index) {
+                    final item = saved[index];
+                    return Dismissible(
+                        key: UniqueKey(),
+                        onDismissed: (direction) {
+                          setState(() {
+                            if ('$item' == current.name) {
+                              current.style = current.unsaved;
+                              current.isSaved = false;
+                            }
+                          });
+                          _updateSaved(item);
+                        },
+                        background: Container(color: Colors.red),
+                        child: Column(children: <Widget>[
+                          ListTile(
+                              title: Text('$item',
+                                  style: TextStyle(fontSize: 20))),
+                          Divider()
+                        ]));
                   });
-                },
-                background: Container(color: Colors.red),
-                child: Column(children: <Widget>[
-                  ListTile(
-                      title: Text('$item', style: TextStyle(fontSize: 20))),
-                  Divider()
-                ]));
-          }),
-    );
+            }));
+  }
+
+  void _updateSaved(item) async {
+    arr = Firestore.instance.collection('users').document(id);
+    await arr.updateData({
+      'saved': FieldValue.arrayRemove(['$item'])
+    });
   }
 }
