@@ -13,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-        title: "Playlistz", theme: ThemeData.dark(), home: Generator());
+        title: "Playlistz", theme: ThemeData.dark(), home: Initiate());
   }
 }
 
@@ -32,19 +32,116 @@ class PlaylistName {
   }
 }
 
-class Generator extends StatefulWidget {
+class Initiate extends StatefulWidget {
   @override
-  GeneratorState createState() => GeneratorState();
+  InitiateState createState() => InitiateState();
+}
+
+class InitiateState extends State<Initiate> {
+  String name;
+
+  Future _getId() async {
+    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+    try {
+      if (Platform.isIOS) {
+        return deviceInfo.iosInfo;
+      } else {
+        return deviceInfo.androidInfo; // unique ID on Android
+      }
+    } on PlatformException {
+      print('Error');
+    }
+  }
+
+  Future<List<Widget>> _checkUser({deviceId}) async {
+    List<Widget> returnValue;
+    final QuerySnapshot result = await Firestore.instance
+        .collection('users')
+        .where('id', isEqualTo: deviceId)
+        .getDocuments();
+
+    final List<DocumentSnapshot> docs = result.documents;
+
+    if (docs.length == 0) {
+      returnValue = <Widget>[
+        AlertDialog(
+            title: Text('What is your name?'),
+            content: TextField(
+              controller: TextEditingController(),
+              onChanged: (text) {
+                name = text;
+              },
+            ),
+            actions: <Widget>[
+              FlatButton(
+                child: Text('Submit'),
+                onPressed: () {
+                  _newUser(deviceId);
+                },
+              )
+            ])
+      ];
+      
+    } else {
+      //return <Widget>[Text('Finished')];
+    }
+    return returnValue;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+        future: _getId(),
+        builder: (BuildContext context, AsyncSnapshot snapshot) {
+          List<Widget> children;
+          if (snapshot.hasData) {
+            final deviceId = snapshot.data.identifierForVendor;
+            _checkUser(deviceId: deviceId).then((value) => children = value);
+          } else {
+            children = <Widget>[
+              SizedBox(
+                child: CircularProgressIndicator(),
+                width: 20,
+                height: 20,
+              ),
+              const Padding(
+                  padding: EdgeInsets.only(top: 16), child: Text('Loading...'))
+            ];
+          }
+          return Center(
+              child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: children));
+        });
+  }
+
+  void _newUser(deviceId) {
+    Firestore.instance
+        .collection('users')
+        .document(deviceId.data)
+        .setData({'saved': [], 'id': deviceId, 'name': name});
+    Navigator.pushReplacement(context,
+        MaterialPageRoute(builder: (context) => Generator(id: deviceId)));
+  }
+}
+
+class Generator extends StatefulWidget {
+  final id;
+  Generator({this.id});
+
+  @override
+  GeneratorState createState() => GeneratorState(deviceId: this.id);
 }
 
 class GeneratorState extends State<Generator> {
   PlaylistName plName = PlaylistName();
   String deviceId;
 
+  GeneratorState({this.deviceId});
+
   @override
   Widget build(BuildContext context) {
-    _getId();
-    _checkUser();
     return Scaffold(
         appBar: AppBar(
           title: Text("Playlistz"),
@@ -139,39 +236,6 @@ class GeneratorState extends State<Generator> {
     setState(() {
       plName = result;
     });
-  }
-
-  void _getId() async {
-    DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-    try{
-    if (Platform.isIOS) {
-        IosDeviceInfo iosDeviceInfo = await deviceInfo.iosInfo;
-        deviceId = iosDeviceInfo.identifierForVendor;
-    } else {
-      AndroidDeviceInfo androidDeviceInfo = await deviceInfo.androidInfo;
-      deviceId = androidDeviceInfo.androidId; // unique ID on Android
-    }
-    } on PlatformException {
-      print('Error');
-    }
-  }
-
-  void _checkUser() async {
-    final QuerySnapshot result = await Firestore.instance
-        .collection('users')
-        .where('id', isEqualTo: deviceId)
-        .getDocuments();
-
-    final List<DocumentSnapshot> docs = result.documents;
-
-    if (docs.length == 0) {
-      Firestore.instance
-          .collection('users')
-          .document(deviceId)
-          .setData({'saved': [], 'id': deviceId});
-      
-    }
-
   }
 }
 
