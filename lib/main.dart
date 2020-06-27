@@ -25,41 +25,6 @@ Future<String> getId() async {
               : 'anon${Random().nextInt(10000)}';
 }
 
-class MyApp extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    getId().then((id) => deviceId = id);
-    return StreamBuilder<QuerySnapshot>(
-        stream: coll.snapshots(),
-        builder: (context, snapshot) => snapshot.hasData
-            ? GlobalSnapshot(snapshot: snapshot, child: start)
-            : loading);
-  }
-}
-
-class GlobalSnapshot extends InheritedWidget {
-  final AsyncSnapshot<QuerySnapshot> snapshot;
-
-  @override
-  bool updateShouldNotify(GlobalSnapshot oldWidget) => true;
-
-  GlobalSnapshot({Widget child, this.snapshot}) : super(child: child);
-
-  static GlobalSnapshot of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<GlobalSnapshot>();
-  }
-}
-
-final start = MaterialApp(
-    title: "Playlistz",
-    theme: ThemeData.dark(),
-    initialRoute: '/',
-    routes: {
-      '/': (context) => Initiate(),
-      '/home': (context) => Generator(),
-      '/saved': (context) => SavedList(),
-    });
-
 final loading = Scaffold(
   body: Center(
       child: Column(
@@ -76,73 +41,47 @@ final loading = Scaffold(
       ])),
 );
 
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    getId().then((id) => deviceId = id);
+    return StreamBuilder<QuerySnapshot>(
+        stream: coll.snapshots(),
+        builder: (context, snapshot) => snapshot.hasData
+            ? GlobalSnapshot(snapshot: snapshot, child: start)
+            : Container());
+  }
+}
+
+class GlobalSnapshot extends InheritedWidget {
+  GlobalSnapshot({Widget child, this.snapshot}) : super(child: child);
+
+  final AsyncSnapshot<QuerySnapshot> snapshot;
+  //final DocumentSnapshot doc = snapshot.data.documents.singleWhere((element) => element['id'] == deviceId);
+
+  @override
+  bool updateShouldNotify(GlobalSnapshot old) => true;
+
+  static GlobalSnapshot of(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<GlobalSnapshot>();
+  }
+}
+
+final start = MaterialApp(
+    title: "Playlistz",
+    theme: ThemeData.dark(),
+    initialRoute: '/home',
+    routes: {
+      '/home': (context) => Generator(),
+      '/saved': (context) => SavedList(),
+      '/received': (context) => ReceivedList(),
+    });
+
 const unsaved = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
 const saved = TextStyle(
     fontSize: 50, fontWeight: FontWeight.bold, color: Colors.lightGreen);
 
-class Initiate extends StatefulWidget {
-  @override
-  InitiateState createState() => InitiateState();
-}
-
-class InitiateState extends State<Initiate> {
-  Stream<DocumentSnapshot> stream;
-  @override
-  void initState() {
-    super.initState();
-    _setupName();
-  }
-
-  void _setupName() async {
-    final users = await coll.where('id', isEqualTo: deviceId).getDocuments();
-
-    ///
-    if (users.documents.isEmpty) {
-      final controller = TextEditingController();
-      final name = await showDialog<String>(
-          context: context,
-          builder: (context) => AlertDialog(
-                  title: Text('What is your name?'),
-                  content: TextField(
-                    controller: controller,
-                    autofocus: true,
-                    onSubmitted: (text) {
-                      Navigator.pop(context, text);
-                    },
-                  ),
-                  actions: <Widget>[
-                    FlatButton(
-                      child: Text('Submit'),
-                      onPressed: () {
-                        Navigator.pop(context, controller.text);
-                      },
-                    )
-                  ]));
-      coll.add({'id': deviceId, 'name': name, 'saved': []});
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    Navigator.pushNamedAndRemoveUntil(context, '/home', (Route<dynamic> route) => false);
-    return Container(
-      child: Text("Hello"),
-    );
-  }
-}
-
-class Generator extends StatefulWidget {
-  //final DocumentSnapshot snapshot;
-  //Generator({this.snapshot});
-
-  @override
-  GeneratorState createState() => GeneratorState();
-
-  ///
-}
-
 extension on DocumentSnapshot {
-  ///
   TextStyle style(String name) => isSaved(name) ? saved : unsaved;
   bool isSaved(String name) => savedList.contains(name);
   List<String> get savedList => List.from(data['saved']);
@@ -155,15 +94,49 @@ extension on DocumentSnapshot {
   List<Map> get receivedList => List.from(data['received']);
 }
 
+class Generator extends StatefulWidget {
+  @override
+  GeneratorState createState() => GeneratorState();
+}
+
 class GeneratorState extends State<Generator> {
   String name;
+  bool finished = false;
 
   @override
-
-  ///
   void initState() {
     super.initState();
+    _setupName().then((f) => setState(() => finished = f));
     updateName(false);
+  }
+
+  Future<bool> _setupName() async {
+    final users = await coll.where('id', isEqualTo: deviceId).getDocuments();
+
+    if (users.documents.isEmpty) {
+      final controller = TextEditingController();
+      final name = await showDialog<String>(
+          context: context,
+             barrierDismissible: false,
+            builder: (context) => AlertDialog(
+                  title: Text('What is your name?'),
+                  content: TextField(
+                    controller: controller,
+                    autofocus: true,
+                  ),
+                  actions: <Widget>[
+                    FlatButton(
+                      child: Text('Submit'),
+                      onPressed: () {
+                        Navigator.pop(context, controller.text);
+                      },
+                    )
+                  ]));
+      coll.add({'id': deviceId, 'name': name, 'saved': [], 'received': []});
+    }
+    //setState(() {
+    return finished = true;
+    //});
   }
 
   void updateName([bool callSetState = true]) {
@@ -173,7 +146,6 @@ class GeneratorState extends State<Generator> {
         WordNoun.random(maxSyllables: 4, safeOnly: false).asCapitalized;
     final name = [adjective, noun].join(' ');
     if (callSetState) {
-      ///
       setState(() => this.name = name);
     } else {
       this.name = name;
@@ -182,76 +154,116 @@ class GeneratorState extends State<Generator> {
 
   @override
   Widget build(BuildContext context) {
-    final DocumentSnapshot snapshot = GlobalSnapshot.of(context)
-        .snapshot
-        .data
-        .documents
-        .singleWhere((element) => element['id'] == deviceId);
-    return Scaffold(
-        appBar: AppBar(
-          title: Text("Playlistz"),
-          actions: <Widget>[
-            IconButton(
-              icon: Icon(Icons.list, size: 30),
-              onPressed: () => Navigator.pushNamed(context, '/saved'),
+    if (finished) {
+      final List<DocumentSnapshot> snapshotList =
+        GlobalSnapshot.of(context).snapshot.data.documents;
+      final int con = snapshotList.indexWhere((element) => element['id'] == deviceId);
+      if (con != -1) {
+        final DocumentSnapshot snapshot =
+            snapshotList.singleWhere((element) => element['id'] == deviceId);
+        return Scaffold(
+            appBar: AppBar(
+              title: Text("Playlistz"),
             ),
-            /*IconButton(
-            icon: Icon(Icons.list, size: 30),
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => ReceivedList,
+            endDrawer: Drawer(
+              child: ListView(
+                // Important: Remove any padding from the ListView.
+                padding: EdgeInsets.zero,
+                children: <Widget>[
+                  Container(
+                      height: 80.0,
+                      child: DrawerHeader(
+                          child: Text('Options',
+                              style: TextStyle(color: Colors.white)),
+                          decoration: BoxDecoration(color: Colors.blue),
+                          margin: EdgeInsets.all(0.0),
+                          padding: EdgeInsets.all(20.0))),
+                  ListTile(
+                      title: Text('Saved'),
+                      onTap: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/saved');
+                      }),
+                  ListTile(
+                    title: Text('Received'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(context, '/received');
+                    },
+                  ),
+                ],
               ),
             ),
-          )*/
-          ],
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Text("Hello ${snapshot.name}!",
-                  style: TextStyle(fontSize: 20, color: Colors.blue)),
-              Text('Is This Name Fire?', style: TextStyle(fontSize: 40)),
-              Container(
-                height: 300,
-                //color: Colors.orange,
-                child: Center(
-                    child: Text(name,
-                        textAlign: TextAlign.center,
-                        style: snapshot.style(name))),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Text('Is This Name Fire?', style: TextStyle(fontSize: 40)),
+                  Container(
+                    height: 300,
+                    //color: Colors.orange,
+                    child: Center(
+                        child: Text(name,
+                            textAlign: TextAlign.center,
+                            style: snapshot.style(name))),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: <Widget>[
+                      MaterialButton(
+                        onPressed: () => {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => Sending(
+                                    name: name, myName: snapshot.data['name']),
+                              ))
+                        },
+                        child: Icon(Icons.send, size: 30),
+                        shape: CircleBorder(),
+                        color: Colors.blue,
+                        minWidth: 80,
+                        height: 60,
+                      ),
+                      SizedBox(
+                        width: 30,
+                      ),
+                      MaterialButton(
+                        onPressed: updateName,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Icon(Icons.refresh, size: 50),
+                            Text(' New', style: TextStyle(fontSize: 30))
+                          ],
+                        ),
+                        shape: StadiumBorder(),
+                        color: Colors.orange,
+                        minWidth: 80,
+                        height: 60,
+                      )
+                    ],
+                  )
+                ],
               ),
-              MaterialButton(
-                onPressed: updateName,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Icon(Icons.refresh, size: 50),
-                    Text(' New', style: TextStyle(fontSize: 30))
-                  ],
-                ),
-                shape: StadiumBorder(),
-                color: Colors.orange,
-                minWidth: 80,
-                height: 60,
-              )
-            ],
-          ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => snapshot.toggle(name),
-          child: Icon(Icons.whatshot, size: 30),
-          backgroundColor: Colors.red,
-          foregroundColor: Colors.white,
-        ));
+            ),
+            floatingActionButton: FloatingActionButton(
+              onPressed: () => snapshot.toggle(name),
+              child: Icon(Icons.whatshot, size: 30),
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ));
+      } else {
+        return loading;
+      }
+    } else {
+      return loading;
+    }
   }
 }
 
 class SavedList extends StatefulWidget {
-  //final DocumentSnapshot snapshot;
-  //SavedList({@required this.snapshot});
-
   @override
   SavedListState createState() => SavedListState();
 }
@@ -285,41 +297,36 @@ class SavedListState extends State<SavedList> {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => newName(snapshot),
+        onPressed: () async {
+          final controller = TextEditingController();
+          final name = await showDialog<String>(
+              context: context,
+              builder: (context) => AlertDialog(
+                      title: Text('Add your own playlist name'),
+                      content: TextField(
+                        controller: controller,
+                        autofocus: true,
+                        onSubmitted: (text) {
+                          Navigator.pop(context, text);
+                        },
+                      ),
+                      actions: <Widget>[
+                        FlatButton(
+                          child: Text('Submit'),
+                          onPressed: () {
+                            Navigator.pop(context, controller.text);
+                          },
+                        )
+                      ]));
+          snapshot.add(name);
+        },
         child: Icon(Icons.add, size: 30),
       ),
     );
   }
-
-  void newName(snapshot) async {
-    final controller = TextEditingController();
-    final name = await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-                title: Text('Add your own playlist name'),
-                content: TextField(
-                  controller: controller,
-                  autofocus: true,
-                  onSubmitted: (text) {
-                    Navigator.pop(context, text);
-                  },
-                ),
-                actions: <Widget>[
-                  FlatButton(
-                    child: Text('Submit'),
-                    onPressed: () {
-                      Navigator.pop(context, controller.text);
-                    },
-                  )
-                ]));
-    snapshot.add(name);
-  }
 }
-/*
-class ReceivedList extends StatefulWidget {
-  final DocumentSnapshot snapshot;
-  ReceivedList({@required this.snapshot});
 
+class ReceivedList extends StatefulWidget {
   @override
   ReceivedListState createState() => ReceivedListState();
 }
@@ -327,7 +334,12 @@ class ReceivedList extends StatefulWidget {
 class ReceivedListState extends State<ReceivedList> {
   @override
   Widget build(BuildContext context) {
-    final rec = widget.snapshot.receivedList;
+    final DocumentSnapshot snapshot = GlobalSnapshot.of(context)
+        .snapshot
+        .data
+        .documents
+        .singleWhere((element) => element['id'] == deviceId);
+    final rec = snapshot.receivedList;
     return Scaffold(
         appBar: AppBar(title: Text("Received Names")),
         body: ListView.builder(
@@ -335,15 +347,14 @@ class ReceivedListState extends State<ReceivedList> {
             itemBuilder: (context, index) {
               final item = rec[index];
               void _addReceived() {
-                widget.snapshot.add(item['name']);
-                widget.snapshot.reference.updateData({
+                snapshot.add(item['name']);
+                snapshot.reference.updateData({
                   'received': FieldValue.arrayRemove([item])
                 });
               }
 
               return Column(
                 children: <Widget>[
-                  Expanded(child:
                   ListTile(
                       key: UniqueKey(),
                       title: Text(item['name']),
@@ -359,21 +370,89 @@ class ReceivedListState extends State<ReceivedList> {
                               minWidth: 8.0,
                             ),
                             SizedBox(
-                              width: 15.0,
+                              width: 8.0,
                             ),
                             MaterialButton(
-                                onPressed: () =>
-                                    widget.snapshot.reference.updateData({
+                                onPressed: () => snapshot.reference.updateData({
                                       'received': FieldValue.arrayRemove([item])
                                     }),
                                 child: Text('Nah'),
                                 shape: StadiumBorder(),
                                 color: Colors.red,
                                 minWidth: 8.0),
-                          ]))),
+                          ])),
                   Divider(),
                 ],
               );
             }));
   }
-}*/
+}
+
+class Sending extends StatefulWidget {
+  final String name;
+  final String myName;
+  Sending({this.name, this.myName});
+
+  @override
+  SendingState createState() => SendingState();
+}
+
+class SendingState extends State<Sending> {
+  @override
+  Widget build(BuildContext context) {
+    final List<DocumentSnapshot> snapshot =
+        GlobalSnapshot.of(context).snapshot.data.documents;
+    snapshot.removeWhere((element) => element['id'] == deviceId);
+    return Scaffold(
+        appBar: AppBar(title: Text("Send")),
+        body: ListView.builder(
+            itemCount: snapshot.length,
+            itemBuilder: (context, index) {
+              final item = snapshot[index]['name'];
+              final id = snapshot[index]['id'];
+              final plName = widget.name;
+              return Column(
+                children: <Widget>[
+                  ListTile(
+                      key: UniqueKey(),
+                      title: Text(item),
+                      onTap: () => showDialog<String>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                                  title: Text('Send $plName to $item?'),
+                                  actions: <Widget>[
+                                    FlatButton(
+                                      child: Text('Cancel'),
+                                      onPressed: () {
+                                        Navigator.pop(context);
+                                      },
+                                    ),
+                                    FlatButton(
+                                      child: Text('Send'),
+                                      onPressed: () {
+                                        DocumentSnapshot theirSnap =
+                                            GlobalSnapshot.of(context)
+                                                .snapshot
+                                                .data
+                                                .documents
+                                                .singleWhere((element) =>
+                                                    element['id'] == id);
+                                        theirSnap.reference.updateData({
+                                          'received': FieldValue.arrayUnion([
+                                            {
+                                              'name': plName,
+                                              'sender': widget.myName
+                                            }
+                                          ])
+                                        });
+                                        Navigator.pop(context);
+                                        Navigator.pop(context);
+                                      },
+                                    )
+                                  ]))),
+                  Divider(),
+                ],
+              );
+            }));
+  }
+}
