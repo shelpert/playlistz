@@ -2,10 +2,11 @@ import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:device_info/device_info.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:random_words/random_words.dart';
 
 void main() {
@@ -35,6 +36,9 @@ Future<RemoteConfig> setupRemoteConfig() async {
     'ignoreReceived': 'Nah',
     'ignoreReceivedColor': 0xFFF44336,
   });
+  // Consider fetching part of "setup" or "initialization".
+  // I.e., don't return anything until fetching is done.
+  await remoteConfig.fetch(expiration: const Duration(seconds: 0));
   await remoteConfig.activateFetched();
 
   return remoteConfig;
@@ -70,46 +74,71 @@ final loading = Scaffold(
       ])),
 );
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
+  @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final usersStream = coll.snapshots();
+  final rcFuture = setupRemoteConfig();
+  final idFuture = getId();
+
+  RemoteConfig rc;
+
+  String id;
+  @override
+  void initState() {
+    super.initState();
+    // Wait for both futures to finish before proceeding
+    Future.wait([idFuture, rcFuture]).then((list) {
+      final RemoteConfig rc = list[1];
+      final String id = list[0];
+      setState(() {
+        // Do the mutation of state within this "closure" inside `setState`.
+        this.rc = rc;
+        this.id = id;
+      });
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    getId().then((id) => deviceId = id);
-    RemoteConfig rc;
-    setupRemoteConfig().then((value) => rc = value);
-
-      return StreamBuilder<QuerySnapshot>(
-          stream: coll.snapshots(),
-          builder: (context, snapshot) {
-            if (rc != null) {
-              rc.fetch(expiration: const Duration(seconds: 0));
-            if (snapshot.hasData) {
-              return GlobalSnapshot(
-                snapshot: snapshot,
-                child: start,
-                rc: rc,
-              );
-            } else {
-              return Container();
-            }
-    } else {
+    // This was a race condition. After `rc` updates, it will not be captured in
+    // `GlobalSnapshot` necessarily. There are a couple of options on how to get
+    // this working correctly. Basically, you want to wait for both `rc` and
+    // `snapshot` to be ready before proceeding. Thus, I recommend pulling out
+    // all the start-up work into `initState` and then make a dependency-chain
+    // of futures until you have a single future you care about.
+    if ([rc, id].any((x) => x == null)) {
+      // We aren't ready yet, so show nothing
       return Container();
     }
-  });
-}
-}
-
-class GlobalSnapshot extends InheritedWidget {
-  GlobalSnapshot({Widget child, this.snapshot, this.rc}) : super(child: child);
-
-  final AsyncSnapshot<QuerySnapshot> snapshot;
-  final RemoteConfig rc;
-
-  @override
-  bool updateShouldNotify(GlobalSnapshot old) => true;
-
-  static GlobalSnapshot of(BuildContext context) {
-    return context.dependOnInheritedWidgetOfExactType<GlobalSnapshot>();
+    return StreamBuilder<QuerySnapshot>(
+        stream: usersStream,
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) {
+            // Write the simplest conditional statements first to make our code as "flat" as possible.
+            return Container();
+          }
+          // rc is never null now that we checked above.
+          return Provider.value(
+            value: GlobalSnapshot(snapshot: snapshot.data, rc: rc),
+            child: start,
+          );
+          // Notice how flat the code is now : )
+        });
   }
+}
+
+class GlobalSnapshot {
+  // use @required whenever you should.
+  GlobalSnapshot({@required this.snapshot, @required this.rc});
+  // Get rid of "AsyncSnapshot" datatype as soon as possible. You should never
+  // really "store" an AsyncSnapshot anywhere. Check if it exists inside the
+  // build() method and then use or don't use the data inside the AsyncSnapshot.
+  final QuerySnapshot snapshot;
+  final RemoteConfig rc;
 }
 
 final start = MaterialApp(
@@ -135,7 +164,6 @@ extension on DocumentSnapshot {
   Future toggle(String s) => isSaved(s) ? delete(s) : add(s);
   Future _updateSaved(dynamic value) => reference.updateData({'saved': value});
   String get name => data['name'];
-  String get id => data['id'];
   List<Map> get receivedList => List.from(data['received']);
 }
 
@@ -145,7 +173,13 @@ class Generator extends StatefulWidget {
 }
 
 class GeneratorState extends State<Generator> {
+  // I would probably store "name" similarly in GlobalSnapshot so that you don't
+  // have to keep passing it everywhere.
   String name;
+  // Use a FutureBuilder instead of `finished`.
+  // Something like FutureBuilder<String>(future: name,
+  //   builder: (context, snapshot)
+  //     => !snapshot.hasData ? loading : doSomething(snapshot.name))
   bool finished = false;
 
   @override
@@ -159,7 +193,7 @@ class GeneratorState extends State<Generator> {
     final users = await coll.where('id', isEqualTo: deviceId).getDocuments();
 
     if (users.documents.isEmpty) {
-      final rc = GlobalSnapshot.of(context).rc;
+      final rc = Provider.of<GlobalSnapshot>(context).rc;
       final controller = TextEditingController();
       final name = await showDialog<String>(
           context: context,
@@ -200,12 +234,26 @@ class GeneratorState extends State<Generator> {
 
   @override
   Widget build(BuildContext context) {
+    // Invert the conditional to flatten code here.
     if (finished) {
+      final globalSnapshot = Provider.of<GlobalSnapshot>(context);
+      // Store the `DocumentSnapshot` related to the user inside of
+      // GlobalSnapshot, so you don't have to keep recomputing what it is in
+      // many different parts of the code.
       final List<DocumentSnapshot> snapshotList =
-          GlobalSnapshot.of(context).snapshot.data.documents;
+          globalSnapshot.snapshot.documents;
       final int con =
           snapshotList.indexWhere((element) => element['id'] == deviceId);
-      final RemoteConfig rc = GlobalSnapshot.of(context).rc;
+      final RemoteConfig rc = globalSnapshot.rc;
+      // Again, avoid nested code. Additionally, keeping track of when different
+      // data criteria are met at many different parts of the code is a
+      // headache. Instead you should aim to "funnel" your data/code every
+      // more-precisely as the chain of calls continues. For instance, by this
+      // point you should have already determined earlier if you had a valid
+      // user snapshot, and if not, fail early. Then at this point you can
+      // safely assume you have valid data. Thinking about the principle of
+      // funneling is very useful for code health and readability and
+      // maintainability.
       if (con != -1) {
         final DocumentSnapshot snapshot =
             snapshotList.singleWhere((element) => element['id'] == deviceId);
@@ -246,6 +294,11 @@ class GeneratorState extends State<Generator> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: <Widget>[
+                // Very nice use of remote config! Small nitpick: don't use
+                // small variable names, unless the "scope" of the variable is
+                // very small. For instance, `rc` is not good here because it's
+                // used in a huge scope (this entire build function). But:
+                // numbers.map((x) => x * 2) is ok.
                 Text(rc.getString('fireName'),
                     style: TextStyle(fontSize: rc.getDouble('fireNameSize'))),
                 Container(
@@ -320,13 +373,12 @@ class SavedList extends StatefulWidget {
 class SavedListState extends State<SavedList> {
   @override
   Widget build(BuildContext context) {
-    final DocumentSnapshot snapshot = GlobalSnapshot.of(context)
+    final DocumentSnapshot snapshot = Provider.of<GlobalSnapshot>(context)
         .snapshot
-        .data
         .documents
         .singleWhere((element) => element['id'] == deviceId);
     final saved = snapshot.savedList;
-    final RemoteConfig rc = GlobalSnapshot.of(context).rc;
+    final RemoteConfig rc = Provider.of<GlobalSnapshot>(context).rc;
     return Scaffold(
       appBar: AppBar(title: Text("${snapshot.name}'s Fire Playlistz")),
       body: ListView.builder(
@@ -388,13 +440,12 @@ class ReceivedList extends StatefulWidget {
 class ReceivedListState extends State<ReceivedList> {
   @override
   Widget build(BuildContext context) {
-    final DocumentSnapshot snapshot = GlobalSnapshot.of(context)
+    final DocumentSnapshot snapshot = Provider.of<GlobalSnapshot>(context)
         .snapshot
-        .data
         .documents
         .singleWhere((element) => element['id'] == deviceId);
     final rec = snapshot.receivedList;
-    final RemoteConfig rc = GlobalSnapshot.of(context).rc;
+    final RemoteConfig rc = Provider.of<GlobalSnapshot>(context).rc;
     return Scaffold(
         appBar: AppBar(title: Text("Received Names")),
         body: ListView.builder(
@@ -443,6 +494,7 @@ class ReceivedListState extends State<ReceivedList> {
   }
 }
 
+// This can be statelesswidget.
 class Sending extends StatefulWidget {
   final String name;
   final String myName;
@@ -455,9 +507,15 @@ class Sending extends StatefulWidget {
 class SendingState extends State<Sending> {
   @override
   Widget build(BuildContext context) {
-    final List<DocumentSnapshot> snapshot =
-        GlobalSnapshot.of(context).snapshot.data.documents;
-    snapshot.removeWhere((element) => element['id'] == deviceId);
+    final List<DocumentSnapshot> allDocuments =
+        Provider.of<GlobalSnapshot>(context).snapshot.documents;
+    // Avoid "imperative" patterns like here.
+    // `snapshot.removeWhere` is considered a mutation, because it changes the state of `snapshot`.
+    // Instead, you should think about "transforming" one value into a new value.
+    // The new code below uses `where` to make a completely new object called `snapshot` from `allDocuments`.
+    // This is a good example of "immutable" programming.
+    final snapshot =
+        allDocuments.where((element) => element['id'] != deviceId).toList();
     return Scaffold(
         appBar: AppBar(title: Text("Send")),
         body: ListView.builder(
@@ -486,10 +544,18 @@ class SendingState extends State<Sending> {
                                       child: Text('Send'),
                                       onPressed: () {
                                         DocumentSnapshot theirSnap =
-                                            GlobalSnapshot.of(context)
+                                            Provider.of<GlobalSnapshot>(context)
                                                 .snapshot
-                                                .data
                                                 .documents
+                                                // Instead of doing singleWhere
+                                                // in a bunch of different
+                                                // place, it's more efficient to
+                                                // build a Map once keyed on the
+                                                // "id". Then each time you want
+                                                // to find something by "id", it
+                                                // is "constant-time", instead
+                                                // of "singleWhere", which is
+                                                // "linear time".
                                                 .singleWhere((element) =>
                                                     element['id'] == id);
                                         theirSnap.reference.updateData({
