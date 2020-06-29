@@ -87,4 +87,5 @@ post_install do |installer|
 end
 
 pod 'Firebase/Analytics'
+pod 'Firebase/RemoteConfig'
 

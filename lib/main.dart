@@ -2,6 +2,7 @@ import 'dart:io' show Platform;
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:device_info/device_info.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -9,6 +10,34 @@ import 'package:random_words/random_words.dart';
 
 void main() {
   runApp(MyApp());
+}
+
+Future<RemoteConfig> setupRemoteConfig() async {
+  final RemoteConfig remoteConfig = await RemoteConfig.instance;
+  // Enable developer mode to relax fetch throttling
+  remoteConfig.setConfigSettings(RemoteConfigSettings(debugMode: true));
+  remoteConfig.setDefaults(<String, dynamic>{
+    'askName': 'What is your name?',
+    'sendColor': 0xFF2196F3,
+    'fireColor': 0xFFF44336,
+    'newColor': 0xFFFF9800,
+    'title': 'Playlistz',
+    'drawerTitle': 'Options',
+    'drawerColor': 0xFFF44336,
+    'drawerSaved': 'Saved',
+    'drawerReceived': 'Received',
+    'fireName': 'Is This Name Fire?',
+    'fireNameSize': 40.0,
+    'addColor': 0xFFF44336,
+    'dismissColor': 0xFFF44336,
+    'addReceived': 'Add',
+    'addReceivedColor': 0xFF8BC43A,
+    'ignoreReceived': 'Nah',
+    'ignoreReceivedColor': 0xFFF44336,
+  });
+  await remoteConfig.activateFetched();
+
+  return remoteConfig;
 }
 
 final coll = Firestore.instance.collection('users');
@@ -45,19 +74,35 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     getId().then((id) => deviceId = id);
-    return StreamBuilder<QuerySnapshot>(
-        stream: coll.snapshots(),
-        builder: (context, snapshot) => snapshot.hasData
-            ? GlobalSnapshot(snapshot: snapshot, child: start)
-            : Container());
-  }
+    RemoteConfig rc;
+    setupRemoteConfig().then((value) => rc = value);
+
+      return StreamBuilder<QuerySnapshot>(
+          stream: coll.snapshots(),
+          builder: (context, snapshot) {
+            if (rc != null) {
+              rc.fetch(expiration: const Duration(seconds: 0));
+            if (snapshot.hasData) {
+              return GlobalSnapshot(
+                snapshot: snapshot,
+                child: start,
+                rc: rc,
+              );
+            } else {
+              return Container();
+            }
+    } else {
+      return Container();
+    }
+  });
+}
 }
 
 class GlobalSnapshot extends InheritedWidget {
-  GlobalSnapshot({Widget child, this.snapshot}) : super(child: child);
+  GlobalSnapshot({Widget child, this.snapshot, this.rc}) : super(child: child);
 
   final AsyncSnapshot<QuerySnapshot> snapshot;
-  //final DocumentSnapshot doc = snapshot.data.documents.singleWhere((element) => element['id'] == deviceId);
+  final RemoteConfig rc;
 
   @override
   bool updateShouldNotify(GlobalSnapshot old) => true;
@@ -77,8 +122,8 @@ final start = MaterialApp(
       '/received': (context) => ReceivedList(),
     });
 
-const unsaved = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
-const saved = TextStyle(
+final unsaved = TextStyle(fontSize: 50, fontWeight: FontWeight.bold);
+final saved = TextStyle(
     fontSize: 50, fontWeight: FontWeight.bold, color: Colors.lightGreen);
 
 extension on DocumentSnapshot {
@@ -114,12 +159,13 @@ class GeneratorState extends State<Generator> {
     final users = await coll.where('id', isEqualTo: deviceId).getDocuments();
 
     if (users.documents.isEmpty) {
+      final rc = GlobalSnapshot.of(context).rc;
       final controller = TextEditingController();
       final name = await showDialog<String>(
           context: context,
-             barrierDismissible: false,
-            builder: (context) => AlertDialog(
-                  title: Text('What is your name?'),
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+                  title: Text(rc.getString('askName')),
                   content: TextField(
                     controller: controller,
                     autofocus: true,
@@ -156,104 +202,107 @@ class GeneratorState extends State<Generator> {
   Widget build(BuildContext context) {
     if (finished) {
       final List<DocumentSnapshot> snapshotList =
-        GlobalSnapshot.of(context).snapshot.data.documents;
-      final int con = snapshotList.indexWhere((element) => element['id'] == deviceId);
+          GlobalSnapshot.of(context).snapshot.data.documents;
+      final int con =
+          snapshotList.indexWhere((element) => element['id'] == deviceId);
+      final RemoteConfig rc = GlobalSnapshot.of(context).rc;
       if (con != -1) {
         final DocumentSnapshot snapshot =
             snapshotList.singleWhere((element) => element['id'] == deviceId);
         return Scaffold(
-            appBar: AppBar(
-              title: Text("Playlistz"),
-            ),
-            endDrawer: Drawer(
-              child: ListView(
-                // Important: Remove any padding from the ListView.
-                padding: EdgeInsets.zero,
-                children: <Widget>[
-                  Container(
-                      height: 80.0,
-                      child: DrawerHeader(
-                          child: Text('Options',
-                              style: TextStyle(color: Colors.white)),
-                          decoration: BoxDecoration(color: Colors.blue),
-                          margin: EdgeInsets.all(0.0),
-                          padding: EdgeInsets.all(20.0))),
-                  ListTile(
-                      title: Text('Saved'),
-                      onTap: () {
-                        Navigator.pop(context);
-                        Navigator.pushNamed(context, '/saved');
-                      }),
-                  ListTile(
-                    title: Text('Received'),
+          appBar: AppBar(
+            title: Text(rc.getString('title')),
+          ),
+          endDrawer: Drawer(
+            child: ListView(
+              // Important: Remove any padding from the ListView.
+              padding: EdgeInsets.zero,
+              children: <Widget>[
+                Container(
+                    height: 80.0,
+                    child: DrawerHeader(
+                        child: Text(rc.getString('drawerTitle')),
+                        decoration: BoxDecoration(
+                            color: Color(rc.getInt('drawerColor'))),
+                        margin: EdgeInsets.all(0.0),
+                        padding: EdgeInsets.all(20.0))),
+                ListTile(
+                    title: Text(rc.getString('drawerSaved')),
                     onTap: () {
                       Navigator.pop(context);
-                      Navigator.pushNamed(context, '/received');
-                    },
-                  ),
-                ],
-              ),
+                      Navigator.pushNamed(context, '/saved');
+                    }),
+                ListTile(
+                  title: Text(rc.getString('drawerReceived')),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/received');
+                  },
+                ),
+              ],
             ),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Text('Is This Name Fire?', style: TextStyle(fontSize: 40)),
-                  Container(
-                    height: 300,
-                    //color: Colors.orange,
-                    child: Center(
-                        child: Text(name,
-                            textAlign: TextAlign.center,
-                            style: snapshot.style(name))),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    children: <Widget>[
-                      MaterialButton(
-                        onPressed: () => {
-                          Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => Sending(
-                                    name: name, myName: snapshot.data['name']),
-                              ))
-                        },
-                        child: Icon(Icons.send, size: 30),
-                        shape: CircleBorder(),
-                        color: Colors.blue,
-                        minWidth: 80,
-                        height: 60,
+          ),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
+                Text(rc.getString('fireName'),
+                    style: TextStyle(fontSize: rc.getDouble('fireNameSize'))),
+                Container(
+                  height: 300,
+                  //color: Colors.orange,
+                  child: Center(
+                      child: Text(name,
+                          textAlign: TextAlign.center,
+                          style: snapshot.style(name))),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: <Widget>[
+                    MaterialButton(
+                      onPressed: () => {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => Sending(
+                                  name: name, myName: snapshot.data['name']),
+                            ))
+                      },
+                      child: Icon(Icons.send, size: 30),
+                      shape: CircleBorder(),
+                      color: Color(rc.getInt('sendColor')),
+                      minWidth: 80,
+                      height: 60,
+                    ),
+                    MaterialButton(
+                      onPressed: updateName,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Icon(Icons.refresh, size: 50),
+                          Text(' New', style: TextStyle(fontSize: 30))
+                        ],
                       ),
-                      SizedBox(
-                        width: 30,
-                      ),
-                      MaterialButton(
-                        onPressed: updateName,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: <Widget>[
-                            Icon(Icons.refresh, size: 50),
-                            Text(' New', style: TextStyle(fontSize: 30))
-                          ],
-                        ),
-                        shape: StadiumBorder(),
-                        color: Colors.orange,
-                        minWidth: 80,
-                        height: 60,
-                      )
-                    ],
-                  )
-                ],
-              ),
+                      shape: StadiumBorder(),
+                      color: Color(rc.getInt('newColor')),
+                      minWidth: 80,
+                      height: 60,
+                    ),
+                    MaterialButton(
+                      onPressed: () => snapshot.toggle(name),
+                      child: Icon(Icons.whatshot, size: 30),
+                      shape: CircleBorder(),
+                      color: Color(rc.getInt('fireColor')),
+                      minWidth: 80,
+                      height: 60,
+                    )
+                  ],
+                )
+              ],
             ),
-            floatingActionButton: FloatingActionButton(
-              onPressed: () => snapshot.toggle(name),
-              child: Icon(Icons.whatshot, size: 30),
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ));
+          ),
+        );
       } else {
         return loading;
       }
@@ -277,6 +326,7 @@ class SavedListState extends State<SavedList> {
         .documents
         .singleWhere((element) => element['id'] == deviceId);
     final saved = snapshot.savedList;
+    final RemoteConfig rc = GlobalSnapshot.of(context).rc;
     return Scaffold(
       appBar: AppBar(title: Text("${snapshot.name}'s Fire Playlistz")),
       body: ListView.builder(
@@ -286,7 +336,7 @@ class SavedListState extends State<SavedList> {
           return Dismissible(
             key: ValueKey(item),
             onDismissed: (_) => snapshot.delete(item),
-            background: Container(color: Colors.red),
+            background: Container(color: Color(rc.getInt('dismissColor'))),
             child: Column(
               children: <Widget>[
                 ListTile(title: Text('$item', style: TextStyle(fontSize: 20))),
@@ -297,6 +347,8 @@ class SavedListState extends State<SavedList> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        backgroundColor: Color(rc.getInt('addColor')),
+        foregroundColor: Colors.white,
         onPressed: () async {
           final controller = TextEditingController();
           final name = await showDialog<String>(
@@ -318,7 +370,9 @@ class SavedListState extends State<SavedList> {
                           },
                         )
                       ]));
-          snapshot.add(name);
+          if (name != null) {
+            snapshot.add(name);
+          }
         },
         child: Icon(Icons.add, size: 30),
       ),
@@ -340,6 +394,7 @@ class ReceivedListState extends State<ReceivedList> {
         .documents
         .singleWhere((element) => element['id'] == deviceId);
     final rec = snapshot.receivedList;
+    final RemoteConfig rc = GlobalSnapshot.of(context).rc;
     return Scaffold(
         appBar: AppBar(title: Text("Received Names")),
         body: ListView.builder(
@@ -364,9 +419,9 @@ class ReceivedListState extends State<ReceivedList> {
                           children: <Widget>[
                             MaterialButton(
                               onPressed: _addReceived,
-                              child: Text('Add'),
+                              child: Text(rc.getString('addReceived')),
                               shape: StadiumBorder(),
-                              color: Colors.lightGreen,
+                              color: Color(rc.getInt('addReceivedColor')),
                               minWidth: 8.0,
                             ),
                             SizedBox(
@@ -376,9 +431,9 @@ class ReceivedListState extends State<ReceivedList> {
                                 onPressed: () => snapshot.reference.updateData({
                                       'received': FieldValue.arrayRemove([item])
                                     }),
-                                child: Text('Nah'),
+                                child: Text(rc.getString('ignoreReceived')),
                                 shape: StadiumBorder(),
-                                color: Colors.red,
+                                color: Color(rc.getInt('ignoreReceivedColor')),
                                 minWidth: 8.0),
                           ])),
                   Divider(),
