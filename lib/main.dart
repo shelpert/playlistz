@@ -43,7 +43,6 @@ Future<RemoteConfig> setupRemoteConfig() async {
 }
 
 final coll = Firestore.instance.collection('users');
-String deviceId;
 
 Future<String> getId() async {
   final deviceInfo = DeviceInfoPlugin();
@@ -173,6 +172,7 @@ class Generator extends StatefulWidget {
 
 class GeneratorState extends State<Generator> {
   String name;
+  String deviceId;
 
   @override
   void initState() {
@@ -182,10 +182,11 @@ class GeneratorState extends State<Generator> {
   }
 
   void _setupName() async {
+    deviceId = Provider.of<GlobalSnapshot>(context, listen: false).deviceId;
     final users = await coll.where('id', isEqualTo: deviceId).getDocuments();
 
     if (users.documents.isEmpty) {
-      final remoteConfig = Provider.of<GlobalSnapshot>(context).remoteConfig;
+      final remoteConfig = Provider.of<GlobalSnapshot>(context, listen: false).remoteConfig;
       final controller = TextEditingController();
       final name = await showDialog<String>(
           context: context,
@@ -467,6 +468,7 @@ class Sending extends StatelessWidget {
     final DocumentSnapshot docSnap =
         Provider.of<GlobalSnapshot>(context).docSnap;
     final String myName = docSnap['name'];
+    final String deviceId = docSnap['id'];
     final snapshot =
         allDocuments.where((element) => element['id'] != deviceId).toList();
     return Scaffold(
@@ -497,7 +499,7 @@ class Sending extends StatelessWidget {
                                       child: Text('Send'),
                                       onPressed: () {
                                         DocumentSnapshot theirSnap =
-                                            Provider.of<GlobalSnapshot>(context)
+                                            Provider.of<GlobalSnapshot>(context, listen: false)
                                                 .documentMap[id];
                                         theirSnap.reference.updateData({
                                           'received': FieldValue.arrayUnion([
