@@ -36,8 +36,6 @@ Future<RemoteConfig> setupRemoteConfig() async {
     'ignoreReceived': 'Nah',
     'ignoreReceivedColor': 0xFFF44336,
   });
-  // Consider fetching part of "setup" or "initialization".
-  // I.e., don't return anything until fetching is done.
   await remoteConfig.fetch(expiration: const Duration(seconds: 0));
   await remoteConfig.activateFetched();
 
@@ -84,9 +82,9 @@ class _MyAppState extends State<MyApp> {
   final rcFuture = setupRemoteConfig();
   final idFuture = getId();
 
-  RemoteConfig rc;
+  RemoteConfig remoteConfig;
 
-  String id;
+  String deviceId;
   @override
   void initState() {
     super.initState();
@@ -96,49 +94,47 @@ class _MyAppState extends State<MyApp> {
       final String id = list[0];
       setState(() {
         // Do the mutation of state within this "closure" inside `setState`.
-        this.rc = rc;
-        this.id = id;
+        this.remoteConfig = rc;
+        this.deviceId = id;
       });
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This was a race condition. After `rc` updates, it will not be captured in
-    // `GlobalSnapshot` necessarily. There are a couple of options on how to get
-    // this working correctly. Basically, you want to wait for both `rc` and
-    // `snapshot` to be ready before proceeding. Thus, I recommend pulling out
-    // all the start-up work into `initState` and then make a dependency-chain
-    // of futures until you have a single future you care about.
-    if ([rc, id].any((x) => x == null)) {
-      // We aren't ready yet, so show nothing
+    if ([remoteConfig, deviceId].any((x) => x == null)) {
       return Container();
     }
     return StreamBuilder<QuerySnapshot>(
         stream: usersStream,
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
-            // Write the simplest conditional statements first to make our code as "flat" as possible.
             return Container();
           }
-          // rc is never null now that we checked above.
           return Provider.value(
-            value: GlobalSnapshot(snapshot: snapshot.data, rc: rc),
+            value: GlobalSnapshot(
+                snapshot: snapshot.data,
+                remoteConfig: remoteConfig,
+                deviceId: deviceId),
             child: start,
           );
-          // Notice how flat the code is now : )
         });
   }
 }
 
 class GlobalSnapshot {
-  // use @required whenever you should.
-  GlobalSnapshot({@required this.snapshot, @required this.rc});
-  // Get rid of "AsyncSnapshot" datatype as soon as possible. You should never
-  // really "store" an AsyncSnapshot anywhere. Check if it exists inside the
-  // build() method and then use or don't use the data inside the AsyncSnapshot.
+  GlobalSnapshot(
+      {@required this.snapshot,
+      @required this.remoteConfig,
+      @required this.deviceId}) {
+    this.docSnap = this.snapshot.documents.singleWhere(
+        (element) => element['id'] == this.deviceId,
+        orElse: () => null);
+  }
   final QuerySnapshot snapshot;
-  final RemoteConfig rc;
+  final RemoteConfig remoteConfig;
+  final String deviceId;
+  DocumentSnapshot docSnap;
 }
 
 final start = MaterialApp(
@@ -173,33 +169,26 @@ class Generator extends StatefulWidget {
 }
 
 class GeneratorState extends State<Generator> {
-  // I would probably store "name" similarly in GlobalSnapshot so that you don't
-  // have to keep passing it everywhere.
   String name;
-  // Use a FutureBuilder instead of `finished`.
-  // Something like FutureBuilder<String>(future: name,
-  //   builder: (context, snapshot)
-  //     => !snapshot.hasData ? loading : doSomething(snapshot.name))
-  bool finished = false;
 
   @override
   void initState() {
     super.initState();
-    _setupName().then((f) => setState(() => finished = f));
+    _setupName();
     updateName(false);
   }
 
-  Future<bool> _setupName() async {
+  void _setupName() async {
     final users = await coll.where('id', isEqualTo: deviceId).getDocuments();
 
     if (users.documents.isEmpty) {
-      final rc = Provider.of<GlobalSnapshot>(context).rc;
+      final remoteConfig = Provider.of<GlobalSnapshot>(context).remoteConfig;
       final controller = TextEditingController();
       final name = await showDialog<String>(
           context: context,
           barrierDismissible: false,
           builder: (context) => AlertDialog(
-                  title: Text(rc.getString('askName')),
+                  title: Text(remoteConfig.getString('askName')),
                   content: TextField(
                     controller: controller,
                     autofocus: true,
@@ -214,9 +203,6 @@ class GeneratorState extends State<Generator> {
                   ]));
       coll.add({'id': deviceId, 'name': name, 'saved': [], 'received': []});
     }
-    //setState(() {
-    return finished = true;
-    //});
   }
 
   void updateName([bool callSetState = true]) {
@@ -234,134 +220,115 @@ class GeneratorState extends State<Generator> {
 
   @override
   Widget build(BuildContext context) {
-    // Invert the conditional to flatten code here.
-    if (finished) {
-      final globalSnapshot = Provider.of<GlobalSnapshot>(context);
-      // Store the `DocumentSnapshot` related to the user inside of
-      // GlobalSnapshot, so you don't have to keep recomputing what it is in
-      // many different parts of the code.
-      final List<DocumentSnapshot> snapshotList =
-          globalSnapshot.snapshot.documents;
-      final int con =
-          snapshotList.indexWhere((element) => element['id'] == deviceId);
-      final RemoteConfig rc = globalSnapshot.rc;
-      // Again, avoid nested code. Additionally, keeping track of when different
-      // data criteria are met at many different parts of the code is a
-      // headache. Instead you should aim to "funnel" your data/code every
-      // more-precisely as the chain of calls continues. For instance, by this
-      // point you should have already determined earlier if you had a valid
-      // user snapshot, and if not, fail early. Then at this point you can
-      // safely assume you have valid data. Thinking about the principle of
-      // funneling is very useful for code health and readability and
-      // maintainability.
-      if (con != -1) {
-        final DocumentSnapshot snapshot =
-            snapshotList.singleWhere((element) => element['id'] == deviceId);
-        return Scaffold(
-          appBar: AppBar(
-            title: Text(rc.getString('title')),
-          ),
-          endDrawer: Drawer(
-            child: ListView(
-              // Important: Remove any padding from the ListView.
-              padding: EdgeInsets.zero,
-              children: <Widget>[
-                Container(
-                    height: 80.0,
-                    child: DrawerHeader(
-                        child: Text(rc.getString('drawerTitle')),
-                        decoration: BoxDecoration(
-                            color: Color(rc.getInt('drawerColor'))),
-                        margin: EdgeInsets.all(0.0),
-                        padding: EdgeInsets.all(20.0))),
-                ListTile(
-                    title: Text(rc.getString('drawerSaved')),
-                    onTap: () {
-                      Navigator.pop(context);
-                      Navigator.pushNamed(context, '/saved');
-                    }),
-                ListTile(
-                  title: Text(rc.getString('drawerReceived')),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.pushNamed(context, '/received');
-                  },
-                ),
-              ],
-            ),
-          ),
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: <Widget>[
-                // Very nice use of remote config! Small nitpick: don't use
-                // small variable names, unless the "scope" of the variable is
-                // very small. For instance, `rc` is not good here because it's
-                // used in a huge scope (this entire build function). But:
-                // numbers.map((x) => x * 2) is ok.
-                Text(rc.getString('fireName'),
-                    style: TextStyle(fontSize: rc.getDouble('fireNameSize'))),
-                Container(
-                  height: 300,
-                  //color: Colors.orange,
-                  child: Center(
-                      child: Text(name,
-                          textAlign: TextAlign.center,
-                          style: snapshot.style(name))),
-                ),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: <Widget>[
-                    MaterialButton(
-                      onPressed: () => {
-                        Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => Sending(
-                                  name: name, myName: snapshot.data['name']),
-                            ))
-                      },
-                      child: Icon(Icons.send, size: 30),
-                      shape: CircleBorder(),
-                      color: Color(rc.getInt('sendColor')),
-                      minWidth: 80,
-                      height: 60,
-                    ),
-                    MaterialButton(
-                      onPressed: updateName,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Icon(Icons.refresh, size: 50),
-                          Text(' New', style: TextStyle(fontSize: 30))
-                        ],
-                      ),
-                      shape: StadiumBorder(),
-                      color: Color(rc.getInt('newColor')),
-                      minWidth: 80,
-                      height: 60,
-                    ),
-                    MaterialButton(
-                      onPressed: () => snapshot.toggle(name),
-                      child: Icon(Icons.whatshot, size: 30),
-                      shape: CircleBorder(),
-                      color: Color(rc.getInt('fireColor')),
-                      minWidth: 80,
-                      height: 60,
-                    )
-                  ],
-                )
-              ],
-            ),
-          ),
-        );
-      } else {
-        return loading;
-      }
-    } else {
+    final snapshot = Provider.of<GlobalSnapshot>(context).docSnap;
+    if (snapshot == null) {
       return loading;
+    } else {
+      final remoteConfig = Provider.of<GlobalSnapshot>(context).remoteConfig;
+      return Scaffold(
+          appBar: AppBar(
+            title: Text(remoteConfig.getString('title')),
+          ),
+          endDrawer: mainDrawer(remoteConfig: remoteConfig),
+          body: mainBody(remoteConfig: remoteConfig, snapshot: snapshot));
     }
+  }
+
+  Widget mainDrawer({@required remoteConfig}) {
+    return Drawer(
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: <Widget>[
+          Container(
+              height: 80.0,
+              child: DrawerHeader(
+                  child: Text(remoteConfig.getString('drawerTitle')),
+                  decoration: BoxDecoration(
+                      color: Color(remoteConfig.getInt('drawerColor'))),
+                  margin: EdgeInsets.all(0.0),
+                  padding: EdgeInsets.all(20.0))),
+          ListTile(
+              title: Text(remoteConfig.getString('drawerSaved')),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/saved');
+              }),
+          ListTile(
+            title: Text(remoteConfig.getString('drawerReceived')),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.pushNamed(context, '/received');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget mainBody({@required remoteConfig, @required snapshot}) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: <Widget>[
+          Text(remoteConfig.getString('fireName'),
+              style:
+                  TextStyle(fontSize: remoteConfig.getDouble('fireNameSize'))),
+          Container(
+            height: 300,
+            child: Center(
+                child: Text(name,
+                    textAlign: TextAlign.center, style: snapshot.style(name))),
+          ),
+          buttonRow(remoteConfig: remoteConfig, snapshot: snapshot)
+        ],
+      ),
+    );
+  }
+
+  Widget buttonRow({@required remoteConfig, @required snapshot}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: <Widget>[
+        MaterialButton(
+          onPressed: () => {
+            Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      Sending(name: name, myName: snapshot.data['name']),
+                ))
+          },
+          child: Icon(Icons.send, size: 30),
+          shape: CircleBorder(),
+          color: Color(remoteConfig.getInt('sendColor')),
+          minWidth: 80,
+          height: 60,
+        ),
+        MaterialButton(
+          onPressed: updateName,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(Icons.refresh, size: 50),
+              Text(' New', style: TextStyle(fontSize: 30))
+            ],
+          ),
+          shape: StadiumBorder(),
+          color: Color(remoteConfig.getInt('newColor')),
+          minWidth: 80,
+          height: 60,
+        ),
+        MaterialButton(
+          onPressed: () => snapshot.toggle(name),
+          child: Icon(Icons.whatshot, size: 30),
+          shape: CircleBorder(),
+          color: Color(remoteConfig.getInt('fireColor')),
+          minWidth: 80,
+          height: 60,
+        )
+      ],
+    );
   }
 }
 
@@ -378,7 +345,8 @@ class SavedListState extends State<SavedList> {
         .documents
         .singleWhere((element) => element['id'] == deviceId);
     final saved = snapshot.savedList;
-    final RemoteConfig rc = Provider.of<GlobalSnapshot>(context).rc;
+    final RemoteConfig remoteConfig =
+        Provider.of<GlobalSnapshot>(context).remoteConfig;
     return Scaffold(
       appBar: AppBar(title: Text("${snapshot.name}'s Fire Playlistz")),
       body: ListView.builder(
@@ -388,7 +356,8 @@ class SavedListState extends State<SavedList> {
           return Dismissible(
             key: ValueKey(item),
             onDismissed: (_) => snapshot.delete(item),
-            background: Container(color: Color(rc.getInt('dismissColor'))),
+            background:
+                Container(color: Color(remoteConfig.getInt('dismissColor'))),
             child: Column(
               children: <Widget>[
                 ListTile(title: Text('$item', style: TextStyle(fontSize: 20))),
@@ -399,7 +368,7 @@ class SavedListState extends State<SavedList> {
         },
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Color(rc.getInt('addColor')),
+        backgroundColor: Color(remoteConfig.getInt('addColor')),
         foregroundColor: Colors.white,
         onPressed: () async {
           final controller = TextEditingController();
@@ -445,7 +414,8 @@ class ReceivedListState extends State<ReceivedList> {
         .documents
         .singleWhere((element) => element['id'] == deviceId);
     final rec = snapshot.receivedList;
-    final RemoteConfig rc = Provider.of<GlobalSnapshot>(context).rc;
+    final RemoteConfig remoteConfig =
+        Provider.of<GlobalSnapshot>(context).remoteConfig;
     return Scaffold(
         appBar: AppBar(title: Text("Received Names")),
         body: ListView.builder(
@@ -465,28 +435,29 @@ class ReceivedListState extends State<ReceivedList> {
                       key: UniqueKey(),
                       title: Text(item['name']),
                       subtitle: Text(item['sender']),
-                      trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            MaterialButton(
-                              onPressed: _addReceived,
-                              child: Text(rc.getString('addReceived')),
-                              shape: StadiumBorder(),
-                              color: Color(rc.getInt('addReceivedColor')),
-                              minWidth: 8.0,
-                            ),
-                            SizedBox(
-                              width: 8.0,
-                            ),
-                            MaterialButton(
-                                onPressed: () => snapshot.reference.updateData({
-                                      'received': FieldValue.arrayRemove([item])
-                                    }),
-                                child: Text(rc.getString('ignoreReceived')),
-                                shape: StadiumBorder(),
-                                color: Color(rc.getInt('ignoreReceivedColor')),
-                                minWidth: 8.0),
-                          ])),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: <
+                          Widget>[
+                        MaterialButton(
+                          onPressed: _addReceived,
+                          child: Text(remoteConfig.getString('addReceived')),
+                          shape: StadiumBorder(),
+                          color: Color(remoteConfig.getInt('addReceivedColor')),
+                          minWidth: 8.0,
+                        ),
+                        SizedBox(
+                          width: 8.0,
+                        ),
+                        MaterialButton(
+                            onPressed: () => snapshot.reference.updateData({
+                                  'received': FieldValue.arrayRemove([item])
+                                }),
+                            child:
+                                Text(remoteConfig.getString('ignoreReceived')),
+                            shape: StadiumBorder(),
+                            color: Color(
+                                remoteConfig.getInt('ignoreReceivedColor')),
+                            minWidth: 8.0),
+                      ])),
                   Divider(),
                 ],
               );
