@@ -127,14 +127,17 @@ class GlobalSnapshot {
       {@required this.snapshot,
       @required this.remoteConfig,
       @required this.deviceId}) {
-    this.docSnap = this.snapshot.documents.singleWhere(
-        (element) => element['id'] == this.deviceId,
-        orElse: () => null);
+    final documentList = snapshot.documents;
+    documentMap = documentList
+        .asMap()
+        .map((index, value) => MapEntry(value['id'], value));
+    docSnap = documentMap[deviceId];
   }
   final QuerySnapshot snapshot;
   final RemoteConfig remoteConfig;
   final String deviceId;
   DocumentSnapshot docSnap;
+  Map documentMap;
 }
 
 final start = MaterialApp(
@@ -230,7 +233,65 @@ class GeneratorState extends State<Generator> {
             title: Text(remoteConfig.getString('title')),
           ),
           endDrawer: mainDrawer(remoteConfig: remoteConfig),
-          body: mainBody(remoteConfig: remoteConfig, snapshot: snapshot));
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: <Widget>[
+                Text(remoteConfig.getString('fireName'),
+                    style: TextStyle(
+                        fontSize: remoteConfig.getDouble('fireNameSize'))),
+                Container(
+                  height: 300,
+                  child: Center(
+                      child: Text(name,
+                          textAlign: TextAlign.center,
+                          style: snapshot.style(name))),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: <Widget>[
+                    MaterialButton(
+                      onPressed: () => {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => Sending(name: name),
+                            ))
+                      },
+                      child: Icon(Icons.send, size: 30),
+                      shape: CircleBorder(),
+                      color: Color(remoteConfig.getInt('sendColor')),
+                      minWidth: 80,
+                      height: 60,
+                    ),
+                    MaterialButton(
+                      onPressed: updateName,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: <Widget>[
+                          Icon(Icons.refresh, size: 50),
+                          Text(' New', style: TextStyle(fontSize: 30))
+                        ],
+                      ),
+                      shape: StadiumBorder(),
+                      color: Color(remoteConfig.getInt('newColor')),
+                      minWidth: 80,
+                      height: 60,
+                    ),
+                    MaterialButton(
+                      onPressed: () => snapshot.toggle(name),
+                      child: Icon(Icons.whatshot, size: 30),
+                      shape: CircleBorder(),
+                      color: Color(remoteConfig.getInt('fireColor')),
+                      minWidth: 80,
+                      height: 60,
+                    )
+                  ],
+                )
+              ],
+            ),
+          ));
     }
   }
 
@@ -264,72 +325,6 @@ class GeneratorState extends State<Generator> {
       ),
     );
   }
-
-  Widget mainBody({@required remoteConfig, @required snapshot}) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: <Widget>[
-          Text(remoteConfig.getString('fireName'),
-              style:
-                  TextStyle(fontSize: remoteConfig.getDouble('fireNameSize'))),
-          Container(
-            height: 300,
-            child: Center(
-                child: Text(name,
-                    textAlign: TextAlign.center, style: snapshot.style(name))),
-          ),
-          buttonRow(remoteConfig: remoteConfig, snapshot: snapshot)
-        ],
-      ),
-    );
-  }
-
-  Widget buttonRow({@required remoteConfig, @required snapshot}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: <Widget>[
-        MaterialButton(
-          onPressed: () => {
-            Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) =>
-                      Sending(name: name, myName: snapshot.data['name']),
-                ))
-          },
-          child: Icon(Icons.send, size: 30),
-          shape: CircleBorder(),
-          color: Color(remoteConfig.getInt('sendColor')),
-          minWidth: 80,
-          height: 60,
-        ),
-        MaterialButton(
-          onPressed: updateName,
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Icon(Icons.refresh, size: 50),
-              Text(' New', style: TextStyle(fontSize: 30))
-            ],
-          ),
-          shape: StadiumBorder(),
-          color: Color(remoteConfig.getInt('newColor')),
-          minWidth: 80,
-          height: 60,
-        ),
-        MaterialButton(
-          onPressed: () => snapshot.toggle(name),
-          child: Icon(Icons.whatshot, size: 30),
-          shape: CircleBorder(),
-          color: Color(remoteConfig.getInt('fireColor')),
-          minWidth: 80,
-          height: 60,
-        )
-      ],
-    );
-  }
 }
 
 class SavedList extends StatefulWidget {
@@ -340,10 +335,8 @@ class SavedList extends StatefulWidget {
 class SavedListState extends State<SavedList> {
   @override
   Widget build(BuildContext context) {
-    final DocumentSnapshot snapshot = Provider.of<GlobalSnapshot>(context)
-        .snapshot
-        .documents
-        .singleWhere((element) => element['id'] == deviceId);
+    final DocumentSnapshot snapshot =
+        Provider.of<GlobalSnapshot>(context).docSnap;
     final saved = snapshot.savedList;
     final RemoteConfig remoteConfig =
         Provider.of<GlobalSnapshot>(context).remoteConfig;
@@ -409,10 +402,8 @@ class ReceivedList extends StatefulWidget {
 class ReceivedListState extends State<ReceivedList> {
   @override
   Widget build(BuildContext context) {
-    final DocumentSnapshot snapshot = Provider.of<GlobalSnapshot>(context)
-        .snapshot
-        .documents
-        .singleWhere((element) => element['id'] == deviceId);
+    final DocumentSnapshot snapshot =
+        Provider.of<GlobalSnapshot>(context).docSnap;
     final rec = snapshot.receivedList;
     final RemoteConfig remoteConfig =
         Provider.of<GlobalSnapshot>(context).remoteConfig;
@@ -465,26 +456,17 @@ class ReceivedListState extends State<ReceivedList> {
   }
 }
 
-// This can be statelesswidget.
-class Sending extends StatefulWidget {
+class Sending extends StatelessWidget {
   final String name;
-  final String myName;
-  Sending({this.name, this.myName});
+  Sending({this.name});
 
-  @override
-  SendingState createState() => SendingState();
-}
-
-class SendingState extends State<Sending> {
   @override
   Widget build(BuildContext context) {
     final List<DocumentSnapshot> allDocuments =
         Provider.of<GlobalSnapshot>(context).snapshot.documents;
-    // Avoid "imperative" patterns like here.
-    // `snapshot.removeWhere` is considered a mutation, because it changes the state of `snapshot`.
-    // Instead, you should think about "transforming" one value into a new value.
-    // The new code below uses `where` to make a completely new object called `snapshot` from `allDocuments`.
-    // This is a good example of "immutable" programming.
+    final DocumentSnapshot docSnap =
+        Provider.of<GlobalSnapshot>(context).docSnap;
+    final String myName = docSnap['name'];
     final snapshot =
         allDocuments.where((element) => element['id'] != deviceId).toList();
     return Scaffold(
@@ -494,7 +476,7 @@ class SendingState extends State<Sending> {
             itemBuilder: (context, index) {
               final item = snapshot[index]['name'];
               final id = snapshot[index]['id'];
-              final plName = widget.name;
+              final plName = name;
               return Column(
                 children: <Widget>[
                   ListTile(
@@ -516,25 +498,10 @@ class SendingState extends State<Sending> {
                                       onPressed: () {
                                         DocumentSnapshot theirSnap =
                                             Provider.of<GlobalSnapshot>(context)
-                                                .snapshot
-                                                .documents
-                                                // Instead of doing singleWhere
-                                                // in a bunch of different
-                                                // place, it's more efficient to
-                                                // build a Map once keyed on the
-                                                // "id". Then each time you want
-                                                // to find something by "id", it
-                                                // is "constant-time", instead
-                                                // of "singleWhere", which is
-                                                // "linear time".
-                                                .singleWhere((element) =>
-                                                    element['id'] == id);
+                                                .documentMap[id];
                                         theirSnap.reference.updateData({
                                           'received': FieldValue.arrayUnion([
-                                            {
-                                              'name': plName,
-                                              'sender': widget.myName
-                                            }
+                                            {'name': plName, 'sender': myName}
                                           ])
                                         });
                                         Navigator.pop(context);

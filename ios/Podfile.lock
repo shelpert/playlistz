@@ -236,9 +236,6 @@ PODS:
   - Firebase/Firestore (6.27.0):
     - Firebase/CoreOnly
     - FirebaseFirestore (~> 1.16.0)
-  - Firebase/Messaging (6.27.0):
-    - Firebase/CoreOnly
-    - FirebaseMessaging (~> 4.5.0)
   - Firebase/RemoteConfig (6.27.0):
     - Firebase/CoreOnly
     - FirebaseRemoteConfig (~> 4.6.0)
@@ -246,10 +243,6 @@ PODS:
     - Firebase/Core
     - Flutter
   - firebase_core_web (0.1.0):
-    - Flutter
-  - firebase_messaging (0.0.1):
-    - Firebase/Core
-    - Firebase/Messaging
     - Flutter
   - firebase_remote_config (0.0.1):
     - Firebase/RemoteConfig
@@ -292,19 +285,6 @@ PODS:
     - GoogleUtilities/Environment (~> 6.6)
     - GoogleUtilities/UserDefaults (~> 6.6)
     - PromisesObjC (~> 1.2)
-  - FirebaseInstanceID (4.4.0):
-    - FirebaseCore (~> 6.8)
-    - FirebaseInstallations (~> 1.0)
-    - GoogleUtilities/Environment (~> 6.5)
-    - GoogleUtilities/UserDefaults (~> 6.5)
-  - FirebaseMessaging (4.5.0):
-    - FirebaseCore (~> 6.8)
-    - FirebaseInstanceID (~> 4.3)
-    - GoogleUtilities/AppDelegateSwizzler (~> 6.5)
-    - GoogleUtilities/Environment (~> 6.5)
-    - GoogleUtilities/Reachability (~> 6.5)
-    - GoogleUtilities/UserDefaults (~> 6.5)
-    - Protobuf (>= 3.9.2, ~> 3.9)
   - FirebaseRemoteConfig (4.6.0):
     - FirebaseABTesting (~> 3.1)
     - FirebaseCore (~> 6.8)
@@ -382,7 +362,6 @@ DEPENDENCIES:
   - Firebase/RemoteConfig
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_core_web (from `.symlinks/plugins/firebase_core_web/ios`)
-  - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
   - firebase_remote_config (from `.symlinks/plugins/firebase_remote_config/ios`)
   - Flutter (from `Flutter`)
 
@@ -397,8 +376,6 @@ SPEC REPOS:
     - FirebaseCoreDiagnostics
     - FirebaseFirestore
     - FirebaseInstallations
-    - FirebaseInstanceID
-    - FirebaseMessaging
     - FirebaseRemoteConfig
     - GoogleAppMeasurement
     - GoogleDataTransport
@@ -422,8 +399,6 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/firebase_core/ios"
   firebase_core_web:
     :path: ".symlinks/plugins/firebase_core_web/ios"
-  firebase_messaging:
-    :path: ".symlinks/plugins/firebase_messaging/ios"
   firebase_remote_config:
     :path: ".symlinks/plugins/firebase_remote_config/ios"
   Flutter:
@@ -438,7 +413,6 @@ SPEC CHECKSUMS:
   Firebase: fc4cbf6f1592636431821ef9a3c557e4dfd9f268
   firebase_core: 335c02abd48672b7c83c683df833d0488a72e73e
   firebase_core_web: d501d8b946b60c8af265428ce483b0fff5ad52d1
-  firebase_messaging: 21344b3b3a7d9d325d63a70e3750c0c798fe1e03
   firebase_remote_config: ee2579b6e504b0131bb74c2368cc532992097a2f
   FirebaseABTesting: b7f8b6c8c9398e98bb30c4195f697b5b73a330d0
   FirebaseAnalytics: 0ea640473474f036cabbc2576e20c2d63671c92f
@@ -446,8 +420,6 @@ SPEC CHECKSUMS:
   FirebaseCoreDiagnostics: 4505e4d4009b1d93f605088ee7d7764d5f0d1c84
   FirebaseFirestore: 4291ab811ad323a2b807a4a481cd5df2e445a676
   FirebaseInstallations: 293f567159b6d66d1c990f13bb868066096c94ec
-  FirebaseInstanceID: 3b119bfe90e904851218159c9a4ecb847cc51d18
-  FirebaseMessaging: ad9e1a80ea64905e01a0ce1b3eb76a2944544151
   FirebaseRemoteConfig: 63ae9d14848e645c7f070daa6af89265be48f803
   Flutter: 0e3d915762c693b495b44d77113d4970485de6ec
   GoogleAppMeasurement: 2fd5c5a56c069db635c8e7b92d4809a9591d0a69
